@@ -1,9 +1,12 @@
-# Weekly updates for GitHub Actions. The repo has no npm dependencies; when the first one
-# lands, add an `npm` entry with separate `runtime` (dependency-type: production) and
-# `development` (dependency-type: development) groups.
+# Weekly updates for GitHub Actions, holding back versions younger than 7 days. The repo
+# has no npm dependencies; when the first one lands, add an `npm` entry with separate
+# `runtime` (dependency-type: production) and `development` (dependency-type: development)
+# groups and the same cooldown.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7

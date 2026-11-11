@@ -1,4 +1,4 @@
-# Glassnode for Google Sheets
+# `glassnode-google-sheets`
 
 [![CI](https://github.com/glassnode/glassnode-google-sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/glassnode/glassnode-google-sheets/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
