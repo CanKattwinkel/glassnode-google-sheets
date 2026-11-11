@@ -10,6 +10,7 @@ const vm = require('node:vm');
 // lockFree: whether tryLock can succeed. A held lock makes tryLock fail at once.
 function load({lockFree = true, onRefresh = () => ({}), onRevoke = () => {}} = {}) {
   const props = {};
+  const docCache = new Map();
   let held = false;
   const ctx = {
     PropertiesService: {
@@ -29,15 +30,22 @@ function load({lockFree = true, onRefresh = () => ({}), onRevoke = () => {}} = {
         };
       },
     },
-    CacheService: {getUserCache: () => ({get: () => 'device', put: () => {}, remove: () => {}})},
+    CacheService: {
+      getUserCache: () => ({get: () => 'device', put: () => {}, remove: () => {}}),
+      getDocumentCache: () => ({get: k => docCache.get(k) || null, put: (k, v) => docCache.set(k, v), remove: k => docCache.delete(k)}),
+    },
     SpreadsheetApp: {getActive: () => ({getId: () => 'sheet'})},
     Utilities: {
       getUuid: () => 'session-' + Math.random(),
       newBlob: b => ({getDataAsString: () => b}),
       base64DecodeWebSafe: s => Buffer.from(s, 'base64url').toString(),
+      computeDigest: (alg, str) => [...Buffer.from(str)],
+      base64EncodeWebSafe: bytes => Buffer.from(bytes).toString('base64url'),
+      DigestAlgorithm: {MD5: 'MD5'},
     },
     UrlFetchApp: {
       fetch: (url, opts) => {
+        if (url.includes('/v1/')) return {getResponseCode: () => 200, getContentText: () => '[{"t":1,"v":"' + opts.headers.Authorization + '"}]', getHeaders: () => ({})};
         let body = {};
         if (opts.payload.grant_type === 'refresh_token') body = onRefresh(ctx);
         if (url.endsWith('/oauth/revoke')) onRevoke(ctx);
@@ -47,7 +55,7 @@ function load({lockFree = true, onRefresh = () => ({}), onRevoke = () => {}} = {
     },
   };
   vm.createContext(ctx);
-  for (const f of ['Config.js', 'Lib.js', 'Auth.js']) {
+  for (const f of ['Config.js', 'Lib.js', 'Auth.js', 'Api.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, {filename: f});
   }
   // An expired session for account A.
@@ -55,7 +63,7 @@ function load({lockFree = true, onRefresh = () => ({}), onRevoke = () => {}} = {
     GN_ACCESS_TOKEN: 'access-a1', GN_REFRESH_TOKEN: 'refresh-a', GN_EXPIRES_AT: '1',
     GN_USER: 'a@example.test', GN_SESSION_ID: 'session-a',
   });
-  return {ctx, props};
+  return {ctx, props, docCache};
 }
 
 const idToken = email => 'x.' + Buffer.from(JSON.stringify({email})).toString('base64url') + '.y';
@@ -111,4 +119,20 @@ test('auth: an access token without a session ID is not signed in', () => {
   delete props.GN_REFRESH_TOKEN; delete props.GN_SESSION_ID;
   assert.strictEqual(ctx.gnAuthStatus().signedIn, false);
   assert.throws(() => ctx.gnGetAccessToken_(), /expired/);
+});
+
+test('api: data fetched with the old account is never cached under a new session', () => {
+  // The refresh can't get the lock; account B signs in while it runs.
+  const {ctx, props, docCache} = load({lockFree: false, onRefresh: () => {
+    Object.assign(props, {GN_ACCESS_TOKEN: 'access-b', GN_REFRESH_TOKEN: 'refresh-b', GN_EXPIRES_AT: String(Date.now() + 3600e3), GN_SESSION_ID: 'session-b'});
+    return refreshed();
+  }});
+  ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60);
+  for (const [key, value] of docCache) {
+    // The stub digest is the identity, so the key decodes to "<session ID>|<epoch>|<url>".
+    const session = Buffer.from(key.slice(3), 'base64url').toString().split('|')[0];
+    if (value.includes('access-a2')) assert.notStrictEqual(session, 'session-b', 'A data under B key');
+  }
+  // B's lookup misses and fetches with B's token.
+  assert.match(JSON.stringify(ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60)), /access-b/);
 });

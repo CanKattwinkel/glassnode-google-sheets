@@ -66,9 +66,12 @@ function gnApiGet_(path, params, ttlSeconds) {
   query.source = GN_CONFIG_.source;
   var url = GN_CONFIG_.apiBase + path + '?' + gnQueryString_(query);
 
-  // Resolve the token first so that signed-out sheets never serve cached data.
-  var token = gnGetAccessToken_();
+  // Read the session before the token: if someone signs in meanwhile, this
+  // response can only land under the old session's cache key, which nothing
+  // reads again. Resolving the token before any cache read means signed-out
+  // sheets never serve cached data.
   var session = gnReadSession_();
+  var token = gnGetAccessToken_();
   var started = Date.now();
 
   var cache = CacheService.getDocumentCache();
