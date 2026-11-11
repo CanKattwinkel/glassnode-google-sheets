@@ -45,9 +45,8 @@ function gnAccessValid_(s) {
 }
 
 /**
- * Run fn under the document lock that token refreshes take. Best effort: when
- * the lock can't be had, fn still runs; the session check in
- * gnGetAccessToken_ covers that case.
+ * Run fn(locked) under the document lock. Every write to the session happens
+ * with the lock held; fn still runs without it, and must then not write.
  */
 function gnWithSessionLock_(fn) {
   var lock = null;
@@ -58,7 +57,7 @@ function gnWithSessionLock_(fn) {
     lock = null;
   }
   try {
-    return fn();
+    return fn(!!lock);
   } finally {
     if (lock) lock.releaseLock();
   }
@@ -104,10 +103,10 @@ function gnGetAccessToken_(rejectedToken) {
   if (!s.refreshToken) throw new Error(GN_MSG_EXPIRED_);
 
   // Many cells can recalculate at once. The lock keeps them from all
-  // refreshing; whoever gets it first refreshes and the rest re-read. Sign-in
-  // and sign-out take the same lock. Refresh tokens are non-rotating, so
-  // proceeding without the lock is still safe.
-  return gnWithSessionLock_(function () {
+  // refreshing; whoever gets it first refreshes and the rest re-read. Refresh
+  // tokens are non-rotating, so a call that can't get the lock still refreshes,
+  // but only uses the new token and leaves the session to the lock holder.
+  return gnWithSessionLock_(function (locked) {
     s = gnReadSession_();
     if (usable(s)) return s.accessToken;
     if (!s.refreshToken) throw new Error(s.accessToken ? GN_MSG_EXPIRED_ : GN_MSG_SIGN_IN_);
@@ -117,7 +116,11 @@ function gnGetAccessToken_(rejectedToken) {
       client_id: GN_CONFIG_.clientId,
       refresh_token: s.refreshToken,
     });
-    // Someone signed out or in while the request ran: their state wins.
+    if (!locked) {
+      if (r.code === 200 && r.body.access_token) return r.body.access_token;
+      throw new Error(r.body.error === 'invalid_grant' ? GN_MSG_EXPIRED_ : 'Could not refresh the Glassnode session. Try again shortly.');
+    }
+    // The session changed meanwhile (only possible if a writer skipped the lock): it wins.
     var now = gnReadSession_();
     if (!gnSameSession_(s, now)) {
       if (usable(now)) return now.accessToken;
@@ -207,9 +210,11 @@ function gnAuthPoll() {
     }
     cache.remove(gnDeviceCacheKey_());
     var tokens = r.body;
-    gnWithSessionLock_(function () {
-      gnSaveTokens_(tokens, true);
+    var saved = gnWithSessionLock_(function (locked) {
+      if (locked) gnSaveTokens_(tokens, true);
+      return locked;
     });
+    if (!saved) return {status: 'error', message: 'Glassnode is busy in this spreadsheet. Sign in again.'};
     return {status: 'ok', user: gnReadSession_().user};
   }
   switch (r.body.error) {
@@ -228,16 +233,22 @@ function gnAuthPoll() {
   }
 }
 
-/** Sign out: revoke the refresh token (best effort) and clear the sheet's session. */
+/** Sign out: clear the sheet's session, then revoke its refresh token (best effort). */
 function gnAuthSignOut() {
-  var s = gnReadSession_();
-  if (s.refreshToken) {
+  // Clear under the lock first, then revoke the token that was cleared, so a
+  // sign-in that lands during the revoke request is kept.
+  var refreshToken = gnWithSessionLock_(function (locked) {
+    if (!locked) throw new Error('Glassnode is busy in this spreadsheet. Try signing out again.');
+    var token = gnReadSession_().refreshToken;
+    gnClearSession_();
+    return token;
+  });
+  if (refreshToken) {
     try {
-      gnAuthPost_('/oauth/revoke', {client_id: GN_CONFIG_.clientId, token: s.refreshToken});
+      gnAuthPost_('/oauth/revoke', {client_id: GN_CONFIG_.clientId, token: refreshToken});
     } catch (e) {
-      // Local sign-out still proceeds.
+      // The local sign-out already happened.
     }
   }
-  gnWithSessionLock_(gnClearSession_);
   return gnAuthStatus();
 }
