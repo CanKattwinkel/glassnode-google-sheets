@@ -54,7 +54,7 @@ function GN_METRIC(asset, metric, startDate, endDate) {
   asset = String(asset === undefined || asset === null ? '' : asset).trim();
   metric = String(metric === undefined || metric === null ? '' : metric).trim();
   if (!asset || !metric) throw new Error('asset and metric are required.');
-  if (metric.charAt(0) !== '/') {
+  if (!gnIsMetricPath_(metric)) {
     throw new Error('Invalid metric path. Use API notation like /addresses/active_count.');
   }
   if (startDate === undefined || startDate === null || startDate === '') {

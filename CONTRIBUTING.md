@@ -14,7 +14,7 @@ Requirements: Node.js 18+. There is nothing to install.
 
 ```bash
 npm run lint   # syntax check of every file in src/ and test/
-npm test       # unit tests for the pure helpers in src/Lib.js
+npm test       # unit tests for src/Lib.js and the session handling in src/Auth.js
 ```
 
 The file layout and code conventions are in
