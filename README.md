@@ -3,6 +3,11 @@
 Custom functions that pull Glassnode metrics into a Google Sheet, modelled on
 the [Glassnode Excel add-in](https://github.com/glassnode/glassnode-excel).
 
+![A Google Sheet with a daily BTC price table, an OHLC table, a price chart built from the data, and the Glassnode sidebar](docs/images/overview.png)
+
+One formula per table: the results are ordinary numbers and dates, so charts,
+pivot tables and other formulas work on them directly.
+
 > **Status:** development build. It runs as a script bound to a test
 > spreadsheet and points at the Glassnode dev environment. It is not published
 > to the Google Workspace Marketplace.
@@ -45,6 +50,8 @@ Lists the asset IDs available on Glassnode, one per row.
 =GN_METRIC("ETH", "/distribution/balance_exchanges", "2025-07-20", "2025-07-25", "e=binance")
 ```
 
+![GN_METRIC returning the close, high, low and open of an OHLC metric as separate columns](docs/images/multi-field.png)
+
 Values are real numbers and dates, so they work in charts and arithmetic.
 
 **Sub-daily timestamps:** Sheets displays a date-time returned by a formula as
@@ -52,6 +59,8 @@ a date only. The time is there; format the column with
 *Format → Number → Date time* to see it.
 
 ## Signing in
+
+<img src="docs/images/sidebar.png" alt="The Glassnode sidebar, signed in, with the refresh actions and example formulas" width="262" align="right">
 
 Open **Extensions → Glassnode → Open**, click **Sign in**, confirm the code in
 the tab that opens and log in to Glassnode. There is no API-key option.
