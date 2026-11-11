@@ -16,6 +16,7 @@ var GN_PROP_ = {
   expiresAt: 'GN_EXPIRES_AT', // epoch ms
   user: 'GN_USER',
   session: 'GN_SESSION_ID', // changes on every sign-in; part of the cache key
+  env: 'GN_SESSION_ENV', // environment the session was issued by
   epoch: 'GN_CACHE_EPOCH', // bumped by "Refresh all formulas"
 };
 var GN_EXPIRY_SKEW_MS_ = 5 * 60 * 1000;
@@ -29,12 +30,15 @@ function gnStore_() {
 
 function gnReadSession_() {
   var p = gnStore_().getProperties();
+  // A session issued by another environment is unusable here: treat the sheet
+  // as signed out instead of sending one tenant's tokens to another.
+  var ours = p[GN_PROP_.env] === gnConfig_().env;
   return {
-    accessToken: p[GN_PROP_.access] || '',
-    refreshToken: p[GN_PROP_.refresh] || '',
-    expiresAt: Number(p[GN_PROP_.expiresAt]) || 0,
-    user: p[GN_PROP_.user] || '',
-    sessionId: p[GN_PROP_.session] || '',
+    accessToken: (ours && p[GN_PROP_.access]) || '',
+    refreshToken: (ours && p[GN_PROP_.refresh]) || '',
+    expiresAt: ours ? Number(p[GN_PROP_.expiresAt]) || 0 : 0,
+    user: (ours && p[GN_PROP_.user]) || '',
+    sessionId: (ours && p[GN_PROP_.session]) || '',
     epoch: p[GN_PROP_.epoch] || '0',
   };
 }
@@ -45,14 +49,15 @@ function gnAccessValid_(s) {
 
 function gnClearSession_() {
   var store = gnStore_();
-  [GN_PROP_.access, GN_PROP_.refresh, GN_PROP_.expiresAt, GN_PROP_.user, GN_PROP_.session].forEach(function (k) {
+  var keys = [GN_PROP_.access, GN_PROP_.refresh, GN_PROP_.expiresAt, GN_PROP_.user, GN_PROP_.session, GN_PROP_.env];
+  keys.forEach(function (k) {
     store.deleteProperty(k);
   });
 }
 
 /** POST a form to the Auth0 tenant. Returns {code, body}. */
 function gnAuthPost_(path, form) {
-  var resp = UrlFetchApp.fetch(GN_CONFIG_.authDomain + path, {
+  var resp = UrlFetchApp.fetch(gnConfig_().authDomain + path, {
     method: 'post',
     payload: form,
     muteHttpExceptions: true,
@@ -99,7 +104,7 @@ function gnGetAccessToken_(rejectedToken) {
 
     var r = gnAuthPost_('/oauth/token', {
       grant_type: 'refresh_token',
-      client_id: GN_CONFIG_.clientId,
+      client_id: gnConfig_().clientId,
       refresh_token: s.refreshToken,
     });
     if (r.code === 200 && r.body.access_token) {
@@ -132,6 +137,7 @@ function gnSaveTokens_(tokens, isLogin) {
     });
     props[GN_PROP_.user] = claims.email || claims.name || 'Glassnode account';
     props[GN_PROP_.session] = Utilities.getUuid();
+    props[GN_PROP_.env] = gnConfig_().env;
   }
   gnStore_().setProperties(props, false);
 }
@@ -148,15 +154,20 @@ function gnDeviceCacheKey_() {
 /** Current sign-in state for the sidebar. */
 function gnAuthStatus() {
   var s = gnReadSession_();
-  return {signedIn: !!(s.refreshToken || gnAccessValid_(s)), user: s.user};
+  var env = gnConfig_().env;
+  // The environment is only reported when it is not production.
+  return {signedIn: !!(s.refreshToken || gnAccessValid_(s)), user: s.user, env: env === GN_DEFAULT_ENV_ ? '' : env};
 }
 
 /** Start the device flow. Returns the code and link to show to the user. */
 function gnAuthStart() {
+  if (!gnConfig_().clientId) {
+    throw new Error('Sign-in is not configured for the "' + gnConfig_().env + '" environment (missing client ID).');
+  }
   var r = gnAuthPost_('/oauth/device/code', {
-    client_id: GN_CONFIG_.clientId,
-    audience: GN_CONFIG_.audience,
-    scope: GN_CONFIG_.scope,
+    client_id: gnConfig_().clientId,
+    audience: gnConfig_().audience,
+    scope: gnConfig_().scope,
   });
   if (r.code !== 200 || !r.body.device_code) {
     throw new Error('Could not start sign-in: ' + (r.body.error_description || r.body.error || 'HTTP ' + r.code));
@@ -179,7 +190,7 @@ function gnAuthPoll() {
   if (!deviceCode) return {status: 'expired'};
   var r = gnAuthPost_('/oauth/token', {
     grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-    client_id: GN_CONFIG_.clientId,
+    client_id: gnConfig_().clientId,
     device_code: deviceCode,
   });
   if (r.code === 200 && r.body.access_token) {
@@ -211,7 +222,7 @@ function gnAuthSignOut() {
   var s = gnReadSession_();
   if (s.refreshToken) {
     try {
-      gnAuthPost_('/oauth/revoke', {client_id: GN_CONFIG_.clientId, token: s.refreshToken});
+      gnAuthPost_('/oauth/revoke', {client_id: gnConfig_().clientId, token: s.refreshToken});
     } catch (e) {
       // Local sign-out still proceeds.
     }

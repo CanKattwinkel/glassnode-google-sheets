@@ -183,6 +183,23 @@ function gnParseRateLimit_(headers, nowMs) {
   return {remaining: num(h['x-rate-limit-remaining']), resetMs: resetMs};
 }
 
+/**
+ * Choose the environment: the requested one when it exists, else the default.
+ * An unknown name is an error rather than a silent fall-back, so a typo in
+ * the GN_ENV script property cannot quietly point a dev deployment at
+ * production.
+ */
+function gnPickEnvironment_(requested, known, fallback) {
+  var name = String(requested === null || requested === undefined ? '' : requested)
+    .trim()
+    .toLowerCase();
+  if (!name) return fallback;
+  if (known.indexOf(name) === -1) {
+    throw new Error('Unknown GN_ENV "' + name + '". Use one of: ' + known.join(', ') + '.');
+  }
+  return name;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     gnDateToUnix_: gnDateToUnix_,
@@ -192,5 +209,6 @@ if (typeof module !== 'undefined') {
     gnJwtPayload_: gnJwtPayload_,
     gnMetricTtl_: gnMetricTtl_,
     gnParseRateLimit_: gnParseRateLimit_,
+    gnPickEnvironment_: gnPickEnvironment_,
   };
 }

@@ -49,6 +49,7 @@
       </div>
     </div>
 
+    <p id="env" class="muted hidden"></p>
     <p id="message" class="error"></p>
 
     <h2>Functions</h2>
@@ -78,6 +79,10 @@
         loadStatus();
       }
       function render(status) {
+        if (status.env !== undefined) {
+          $('env').textContent = status.env ? 'Environment: ' + status.env : '';
+          $('env').classList.toggle('hidden', !status.env);
+        }
         if (status.signedIn) {
           $('user').textContent = status.user || 'Glassnode account';
           show('signedIn');
