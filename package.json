@@ -1,0 +1,10 @@
+{
+  "name": "glassnode-google-sheets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Glassnode add-on for Google Sheets",
+  "scripts": {
+    "test": "node --test test/lib.test.js",
+    "push": "clasp push"
+  }
+}

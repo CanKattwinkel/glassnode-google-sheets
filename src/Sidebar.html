@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_blank" />
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px/1.45 "Google Sans", Roboto, Arial, sans-serif; color: #202124; margin: 0; padding: 16px; }
+      h1 { font-size: 16px; margin: 0 0 12px; }
+      h2 { font-size: 13px; margin: 20px 0 6px; }
+      p { margin: 0 0 10px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 4px; border: 1px solid #dadce0; background: #fff; cursor: pointer; }
+      button.primary { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+      button:disabled { opacity: 0.6; cursor: default; }
+      .muted { color: #5f6368; }
+      .error { color: #c5221f; }
+      .code { font: 600 22px/1 "Roboto Mono", monospace; letter-spacing: 2px; margin: 8px 0 12px; }
+      .box { border: 1px solid #dadce0; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+      code { font: 12px "Roboto Mono", monospace; background: #f1f3f4; padding: 2px 4px; border-radius: 3px; word-break: break-all; }
+      .hidden { display: none; }
+      li { margin-bottom: 6px; }
+      ul { padding-left: 18px; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Glassnode</h1>
+
+    <div id="loading" class="muted">Loading…</div>
+
+    <div id="signedOut" class="hidden">
+      <p>Sign in to use Glassnode data in this spreadsheet.</p>
+      <button id="signIn" class="primary">Sign in</button>
+    </div>
+
+    <div id="pending" class="hidden box">
+      <p>Confirm this code in the Glassnode tab that opened:</p>
+      <div id="userCode" class="code"></div>
+      <p><a id="verifyLink" href="#">Open the sign-in page</a> if no tab opened.</p>
+      <p class="muted">Waiting for confirmation…</p>
+      <button id="cancel">Cancel</button>
+    </div>
+
+    <div id="signedIn" class="hidden">
+      <div class="box">
+        <p>Signed in as <strong id="user"></strong></p>
+        <p class="muted">Everyone who can edit this spreadsheet uses this account for Glassnode formulas.</p>
+        <button id="refresh">Refresh all formulas</button>
+        <button id="retry">Retry failed</button>
+        <button id="signOut">Sign out</button>
+      </div>
+    </div>
+
+    <p id="message" class="error"></p>
+
+    <h2>Functions</h2>
+    <ul>
+      <li><code>=GN_ASSETS()</code></li>
+      <li><code>=GN_METRIC("BTC", "/market/price_usd_close", "2025-01-01")</code><br />single value</li>
+      <li><code>=GN_METRIC("BTC", "/market/price_usd_close", "2025-01-01", "2025-02-01")</code><br />table; the end date is exclusive</li>
+      <li><code>=GN_METRIC("ETH", "/distribution/balance_exchanges", A1, B1, "e=binance")</code><br />extra API parameters as "key=value"</li>
+    </ul>
+    <p class="muted" style="margin-top: 10px">Dates are UTC.</p>
+
+    <script>
+      var pollTimer = null;
+      var pollInterval = 5;
+      var deadline = 0;
+
+      function $(id) { return document.getElementById(id); }
+      function show(id) {
+        ['loading', 'signedOut', 'pending', 'signedIn'].forEach(function (x) {
+          $(x).classList.toggle('hidden', x !== id);
+        });
+      }
+      function setMessage(text) { $('message').textContent = text || ''; }
+      function fail(err) {
+        stopPolling();
+        setMessage(err && err.message ? err.message : String(err));
+        loadStatus();
+      }
+      function render(status) {
+        if (status.signedIn) {
+          $('user').textContent = status.user || 'Glassnode account';
+          show('signedIn');
+        } else {
+          show('signedOut');
+        }
+      }
+      function loadStatus() {
+        google.script.run.withSuccessHandler(render).withFailureHandler(function (e) {
+          show('signedOut');
+          setMessage(e.message);
+        }).gnAuthStatus();
+      }
+      function stopPolling() {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      function schedulePoll() {
+        stopPolling();
+        if (Date.now() > deadline) {
+          setMessage('The sign-in code expired. Please try again.');
+          show('signedOut');
+          return;
+        }
+        pollTimer = setTimeout(function () {
+          google.script.run.withSuccessHandler(onPoll).withFailureHandler(fail).gnAuthPoll();
+        }, pollInterval * 1000);
+      }
+      function onPoll(res) {
+        if (!pollTimer) return; // cancelled
+        if (res.status === 'ok') {
+          stopPolling();
+          render({signedIn: true, user: res.user});
+        } else if (res.status === 'pending') {
+          if (res.slowDown) pollInterval += 5;
+          schedulePoll();
+        } else {
+          stopPolling();
+          show('signedOut');
+          setMessage(
+            res.status === 'expired' ? 'The sign-in code expired. Please try again.'
+            : res.status === 'denied' ? 'Sign-in was cancelled.'
+            : res.message || 'Sign-in failed.'
+          );
+        }
+      }
+
+      $('signIn').onclick = function () {
+        setMessage('');
+        $('signIn').disabled = true;
+        // Open the tab during the click, otherwise the browser blocks it.
+        var tab = null;
+        try { tab = window.open('', '_blank'); } catch (e) {}
+        google.script.run
+          .withSuccessHandler(function (res) {
+            $('signIn').disabled = false;
+            $('userCode').textContent = res.userCode;
+            $('verifyLink').href = res.verificationUrl;
+            if (tab) { try { tab.location.href = res.verificationUrl; } catch (e) {} }
+            pollInterval = res.interval;
+            deadline = Date.now() + res.expiresIn * 1000;
+            show('pending');
+            pollTimer = 1;
+            schedulePoll();
+          })
+          .withFailureHandler(function (e) {
+            $('signIn').disabled = false;
+            if (tab) { try { tab.close(); } catch (x) {} }
+            fail(e);
+          })
+          .gnAuthStart();
+      };
+      $('cancel').onclick = function () { stopPolling(); show('signedOut'); };
+      $('signOut').onclick = function () {
+        setMessage('');
+        google.script.run.withSuccessHandler(render).withFailureHandler(fail).gnAuthSignOut();
+      };
+      function rerun(button, fn) {
+        button.onclick = function () {
+          setMessage('');
+          button.disabled = true;
+          google.script.run
+            .withSuccessHandler(function () { button.disabled = false; })
+            .withFailureHandler(function (e) { button.disabled = false; setMessage(e.message); })
+            [fn]();
+        };
+      }
+      rerun($('refresh'), 'gnRefreshAll');
+      rerun($('retry'), 'gnRetryFailed');
+
+      loadStatus();
+    </script>
+  </body>
+</html>
