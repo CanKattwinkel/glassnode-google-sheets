@@ -116,12 +116,12 @@
           schedulePoll();
         } else {
           stopPolling();
-          show('signedOut');
           setMessage(
             res.status === 'expired' ? 'The sign-in code expired. Please try again.'
             : res.status === 'denied' ? 'Sign-in was cancelled.'
             : res.message || 'Sign-in failed.'
           );
+          loadStatus(); // a failed sign-in can leave an existing session in place
         }
       }
 
