@@ -20,3 +20,6 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+
+# clasp: project IDs stay local; copy .clasp.json.example
+.clasp.json

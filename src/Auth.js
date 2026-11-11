@@ -40,7 +40,28 @@ function gnReadSession_() {
 }
 
 function gnAccessValid_(s) {
-  return !!s.accessToken && s.expiresAt - GN_EXPIRY_SKEW_MS_ > Date.now();
+  // Every sign-in stores a session ID; an access token without one is left over.
+  return !!s.sessionId && !!s.accessToken && s.expiresAt - GN_EXPIRY_SKEW_MS_ > Date.now();
+}
+
+/**
+ * Run fn under the document lock that token refreshes take. Best effort: when
+ * the lock can't be had, fn still runs; the session check in
+ * gnGetAccessToken_ covers that case.
+ */
+function gnWithSessionLock_(fn) {
+  var lock = null;
+  try {
+    lock = LockService.getDocumentLock();
+    if (!lock.tryLock(GN_LOCK_WAIT_MS_)) lock = null;
+  } catch (e) {
+    lock = null;
+  }
+  try {
+    return fn();
+  } finally {
+    if (lock) lock.releaseLock();
+  }
 }
 
 function gnClearSession_() {
@@ -83,16 +104,10 @@ function gnGetAccessToken_(rejectedToken) {
   if (!s.refreshToken) throw new Error(GN_MSG_EXPIRED_);
 
   // Many cells can recalculate at once. The lock keeps them from all
-  // refreshing; whoever gets it first refreshes and the rest re-read. Refresh
-  // tokens are non-rotating, so proceeding without the lock is still safe.
-  var lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    if (!lock.tryLock(GN_LOCK_WAIT_MS_)) lock = null;
-  } catch (e) {
-    lock = null;
-  }
-  try {
+  // refreshing; whoever gets it first refreshes and the rest re-read. Sign-in
+  // and sign-out take the same lock. Refresh tokens are non-rotating, so
+  // proceeding without the lock is still safe.
+  return gnWithSessionLock_(function () {
     s = gnReadSession_();
     if (usable(s)) return s.accessToken;
     if (!s.refreshToken) throw new Error(s.accessToken ? GN_MSG_EXPIRED_ : GN_MSG_SIGN_IN_);
@@ -102,6 +117,12 @@ function gnGetAccessToken_(rejectedToken) {
       client_id: GN_CONFIG_.clientId,
       refresh_token: s.refreshToken,
     });
+    // Someone signed out or in while the request ran: their state wins.
+    var now = gnReadSession_();
+    if (!gnSameSession_(s, now)) {
+      if (usable(now)) return now.accessToken;
+      throw new Error(now.refreshToken ? GN_MSG_EXPIRED_ : GN_MSG_SIGN_IN_);
+    }
     if (r.code === 200 && r.body.access_token) {
       gnSaveTokens_(r.body, false);
       return r.body.access_token;
@@ -114,9 +135,7 @@ function gnGetAccessToken_(rejectedToken) {
     throw new Error(
       'Could not refresh the Glassnode session (' + (r.body.error || 'HTTP ' + r.code) + '). Try again shortly.'
     );
-  } finally {
-    if (lock) lock.releaseLock();
-  }
+  });
 }
 
 /** Persist a token response. On a fresh login also start a new cache session. */
@@ -187,7 +206,10 @@ function gnAuthPoll() {
       return {status: 'error', message: 'Sign-in did not return a long-lived session. Contact Glassnode support.'};
     }
     cache.remove(gnDeviceCacheKey_());
-    gnSaveTokens_(r.body, true);
+    var tokens = r.body;
+    gnWithSessionLock_(function () {
+      gnSaveTokens_(tokens, true);
+    });
     return {status: 'ok', user: gnReadSession_().user};
   }
   switch (r.body.error) {
@@ -216,6 +238,6 @@ function gnAuthSignOut() {
       // Local sign-out still proceeds.
     }
   }
-  gnClearSession_();
+  gnWithSessionLock_(gnClearSession_);
   return gnAuthStatus();
 }

@@ -127,3 +127,20 @@ test('rate limit headers', () => {
     resetMs: null,
   });
 });
+
+test('metric path: plain API paths only', () => {
+  assert.ok(lib.gnIsMetricPath_('/market/price_usd_close'));
+  assert.ok(lib.gnIsMetricPath_('/derivatives/futures-open_interest_sum'));
+  for (const bad of ['', '/', 'market/price', '/market/', '/market//price', '/../user', '/market/..',
+    '/market/price?x=1', '/market/price#x', '/market/price%2F..', '/market/price usd', '/market/price\n']) {
+    assert.strictEqual(lib.gnIsMetricPath_(bad), false, JSON.stringify(bad));
+  }
+});
+
+test('session: same only while refresh token and session ID are unchanged', () => {
+  const a = {refreshToken: 'r1', sessionId: 's1'};
+  assert.ok(lib.gnSameSession_(a, {refreshToken: 'r1', sessionId: 's1'}));
+  assert.strictEqual(lib.gnSameSession_(a, {refreshToken: '', sessionId: ''}), false);
+  assert.strictEqual(lib.gnSameSession_(a, {refreshToken: 'r2', sessionId: 's2'}), false);
+  assert.strictEqual(lib.gnSameSession_({refreshToken: '', sessionId: ''}, {refreshToken: '', sessionId: ''}), false);
+});

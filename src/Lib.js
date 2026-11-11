@@ -183,8 +183,29 @@ function gnParseRateLimit_(headers, nowMs) {
   return {remaining: num(h['x-rate-limit-remaining']), resetMs: resetMs};
 }
 
+/**
+ * True when a metric argument is a plain API path such as
+ * "/market/price_usd_close": slash-separated segments of letters, digits, "_"
+ * and "-". Anything else (dots, "?", "#", "%", whitespace) is refused, so a
+ * cell can only reach paths under /v1/metrics.
+ */
+function gnIsMetricPath_(metric) {
+  return /^(\/[A-Za-z0-9_-]+)+$/.test(String(metric));
+}
+
+/**
+ * True when the stored session is still the one a token request started
+ * from. A refresh that finishes after a sign-out or a new sign-in must not
+ * write its result over the newer state.
+ */
+function gnSameSession_(before, now) {
+  return !!before.refreshToken && before.refreshToken === now.refreshToken && before.sessionId === now.sessionId;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
+    gnIsMetricPath_: gnIsMetricPath_,
+    gnSameSession_: gnSameSession_,
     gnDateToUnix_: gnDateToUnix_,
     gnParseParams_: gnParseParams_,
     gnQueryString_: gnQueryString_,
