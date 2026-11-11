@@ -1,5 +1,8 @@
 # Glassnode for Google Sheets
 
+[![CI](https://github.com/glassnode/glassnode-google-sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/glassnode/glassnode-google-sheets/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 Custom functions that pull Glassnode metrics into a Google Sheet, modelled on
 the [Glassnode Excel add-in](https://github.com/glassnode/glassnode-excel).
 
@@ -11,6 +14,18 @@ pivot tables and other formulas work on them directly.
 > **Status:** development build. It runs as a script bound to a test
 > spreadsheet and points at the Glassnode dev environment. It is not published
 > to the Google Workspace Marketplace.
+
+## Contents
+
+- [Functions](#functions)
+- [Signing in](#signing-in)
+- [Refreshing data](#refreshing-data)
+- [Caching and rate limits](#caching-and-rate-limits)
+- [Development](#development)
+- [Known limitations](#known-limitations)
+- [Contributing](#contributing)
+- [Support](#support)
+- [License](#license)
 
 ## Functions
 
@@ -113,17 +128,7 @@ in the menu and the sidebar re-run formulas on demand:
 
 ## Development
 
-Requirements: Node.js 18+ and [`clasp`](https://github.com/google/clasp),
-logged in with a Google account that can edit the Apps Script project.
-
-```sh
-npm test       # unit tests for the pure helpers in src/Lib.js
-clasp push     # upload src/ to the Apps Script project in .clasp.json
-```
-
-`.clasp.json` points at the dev spreadsheet's bound script. To work on your own
-copy, run `clasp create-script --type sheets --rootDir src` and restore
-`src/appsscript.json` afterwards, because `clasp` overwrites it.
+Setup, commands and releases are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Layout
 
@@ -154,3 +159,15 @@ copy, run `clasp create-script --type sheets --rootDir src` and restore
 - In a script bound to a spreadsheet, as in this development setup, any editor
   can open the script editor and read the stored session. A published add-on
   keeps its storage private to the add-on; this has not been verified yet.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): development setup, tests and releases.
+
+## Support
+
+Questions and bugs: GitHub Issues. Vulnerabilities: see [SECURITY.md](SECURITY.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

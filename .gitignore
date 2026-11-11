@@ -1,3 +1,22 @@
-node_modules/
+# Local env files and credentials. Keep tracked templates (.env.example) with a ! line.
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+credentials.json
 .clasprc.json
+
+# OS and editors
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Dependencies
+node_modules/

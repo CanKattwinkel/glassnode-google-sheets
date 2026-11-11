@@ -4,7 +4,9 @@
   "private": true,
   "description": "Glassnode add-on for Google Sheets",
   "scripts": {
+    "lint": "for f in src/*.js test/*.js; do node --check \"$f\" || exit 1; done",
     "test": "node --test test/lib.test.js",
     "push": "clasp push"
-  }
+  },
+  "license": "Apache-2.0"
 }

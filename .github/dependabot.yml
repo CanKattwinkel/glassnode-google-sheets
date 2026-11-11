@@ -1,0 +1,9 @@
+# Weekly updates for GitHub Actions. The repo has no npm dependencies; when the first one
+# lands, add an `npm` entry with separate `runtime` (dependency-type: production) and
+# `development` (dependency-type: development) groups.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
