@@ -22,6 +22,7 @@ var GN_EXPIRY_SKEW_MS_ = 5 * 60 * 1000;
 var GN_LOCK_WAIT_MS_ = 10 * 1000;
 var GN_MSG_SIGN_IN_ = 'Not signed in to Glassnode. Open Extensions > Glassnode > Open and sign in.';
 var GN_MSG_EXPIRED_ = 'Glassnode session expired. Open Extensions > Glassnode > Open and sign in again.';
+var GN_MSG_CHANGED_ = 'The Glassnode session changed while this formula ran. Use Extensions > Glassnode > Retry failed formulas.';
 
 function gnStore_() {
   return PropertiesService.getDocumentProperties();
@@ -92,12 +93,20 @@ function gnAuthPost_(path, form) {
  *
  * @param {string=} rejectedToken An access token the API just rejected with
  *     401. Forces a refresh unless another execution already replaced it.
+ * @param {string=} sessionId The session the caller's request belongs to. A
+ *     token from any other session is refused, so a response is never paired
+ *     with another session's cache.
  */
-function gnGetAccessToken_(rejectedToken) {
+function gnGetAccessToken_(rejectedToken, sessionId) {
   var usable = function (s) {
     return gnAccessValid_(s) && s.accessToken !== rejectedToken;
   };
-  var s = gnReadSession_();
+  var read = function () {
+    var r = gnReadSession_();
+    if (sessionId !== undefined && r.sessionId !== sessionId) throw new Error(GN_MSG_CHANGED_);
+    return r;
+  };
+  var s = read();
   if (!s.accessToken && !s.refreshToken) throw new Error(GN_MSG_SIGN_IN_);
   if (usable(s)) return s.accessToken;
   if (!s.refreshToken) throw new Error(GN_MSG_EXPIRED_);
@@ -107,7 +116,7 @@ function gnGetAccessToken_(rejectedToken) {
   // tokens are non-rotating, so a call that can't get the lock still refreshes,
   // but only uses the new token and leaves the session to the lock holder.
   return gnWithSessionLock_(function (locked) {
-    s = gnReadSession_();
+    s = read();
     if (usable(s)) return s.accessToken;
     if (!s.refreshToken) throw new Error(s.accessToken ? GN_MSG_EXPIRED_ : GN_MSG_SIGN_IN_);
 
@@ -117,12 +126,14 @@ function gnGetAccessToken_(rejectedToken) {
       refresh_token: s.refreshToken,
     });
     if (!locked) {
+      if (!gnSameSession_(s, gnReadSession_())) throw new Error(GN_MSG_CHANGED_);
       if (r.code === 200 && r.body.access_token) return r.body.access_token;
       throw new Error(r.body.error === 'invalid_grant' ? GN_MSG_EXPIRED_ : 'Could not refresh the Glassnode session. Try again shortly.');
     }
     // The session changed meanwhile (only possible if a writer skipped the lock): it wins.
     var now = gnReadSession_();
     if (!gnSameSession_(s, now)) {
+      if (sessionId !== undefined) throw new Error(GN_MSG_CHANGED_);
       if (usable(now)) return now.accessToken;
       throw new Error(now.refreshToken ? GN_MSG_EXPIRED_ : GN_MSG_SIGN_IN_);
     }

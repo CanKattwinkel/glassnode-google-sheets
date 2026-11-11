@@ -121,18 +121,28 @@ test('auth: an access token without a session ID is not signed in', () => {
   assert.throws(() => ctx.gnGetAccessToken_(), /expired/);
 });
 
-test('api: data fetched with the old account is never cached under a new session', () => {
-  // The refresh can't get the lock; account B signs in while it runs.
-  const {ctx, props, docCache} = load({lockFree: false, onRefresh: () => {
-    Object.assign(props, {GN_ACCESS_TOKEN: 'access-b', GN_REFRESH_TOKEN: 'refresh-b', GN_EXPIRES_AT: String(Date.now() + 3600e3), GN_SESSION_ID: 'session-b'});
-    return refreshed();
-  }});
-  ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60);
-  for (const [key, value] of docCache) {
-    // The stub digest is the identity, so the key decodes to "<session ID>|<epoch>|<url>".
-    const session = Buffer.from(key.slice(3), 'base64url').toString().split('|')[0];
-    if (value.includes('access-a2')) assert.notStrictEqual(session, 'session-b', 'A data under B key');
-  }
-  // B's lookup misses and fetches with B's token.
-  assert.match(JSON.stringify(ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60)), /access-b/);
+
+const signInB = props => Object.assign(props, {GN_ACCESS_TOKEN: 'access-b', GN_REFRESH_TOKEN: 'refresh-b', GN_EXPIRES_AT: String(Date.now() + 3600e3), GN_SESSION_ID: 'session-b', GN_USER: 'b@example.test'});
+
+for (const lockFree of [false, true]) {
+  test(`api: a sign-in during the token lookup fails the call (lock ${lockFree ? 'held' : 'unavailable'})`, () => {
+    const {ctx, props, docCache} = load({lockFree, onRefresh: () => { signInB(props); return refreshed(); }});
+    assert.throws(() => ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60), /session changed/);
+    assert.strictEqual([...docCache.values()].some(v => v.includes('access-')), false);
+    // The retry runs on the new session with B's token.
+    assert.match(JSON.stringify(ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60)), /access-b/);
+  });
+}
+
+test('api: a sign-in during the 401 retry fails the call', () => {
+  const {ctx, props, docCache} = load({onRefresh: () => { signInB(props); return refreshed(); }});
+  Object.assign(props, {GN_EXPIRES_AT: String(Date.now() + 3600e3)}); // A's token looks valid
+  const fetch = ctx.UrlFetchApp.fetch;
+  let first = true;
+  ctx.UrlFetchApp.fetch = (url, opts) => {
+    if (url.includes('/v1/') && first) { first = false; return {getResponseCode: () => 401, getContentText: () => '', getHeaders: () => ({})}; }
+    return fetch(url, opts);
+  };
+  assert.throws(() => ctx.gnApiGet_('/v1/metrics/market/price_usd_close', {a: 'BTC'}, 60), /session changed/);
+  assert.strictEqual([...docCache.values()].some(v => v.includes('access-')), false);
 });

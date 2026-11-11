@@ -71,7 +71,7 @@ function gnApiGet_(path, params, ttlSeconds) {
   // reads again. Resolving the token before any cache read means signed-out
   // sheets never serve cached data.
   var session = gnReadSession_();
-  var token = gnGetAccessToken_();
+  var token = gnGetAccessToken_(undefined, session.sessionId);
   var started = Date.now();
 
   var cache = CacheService.getDocumentCache();
@@ -116,7 +116,7 @@ function gnApiGet_(path, params, ttlSeconds) {
       if (code === 401 && !refreshed) {
         // Rejected before its advertised expiry: refresh once and retry.
         refreshed = true;
-        token = gnGetAccessToken_(token);
+        token = gnGetAccessToken_(token, session.sessionId);
         continue;
       }
 
