@@ -8,6 +8,8 @@
     "https://www.googleapis.com/auth/script.external_request"
   ],
   "urlFetchWhitelist": [
+    "https://auth.glassnode.com/",
+    "https://api.glassnode.com/",
     "https://auth.glassnode.tech/",
     "https://api.glassnode.tech/"
   ]

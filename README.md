@@ -4,8 +4,9 @@ Custom functions that pull Glassnode metrics into a Google Sheet, modelled on
 the [Glassnode Excel add-in](https://github.com/glassnode/glassnode-excel).
 
 > **Status:** development build. It runs as a script bound to a test
-> spreadsheet and points at the Glassnode dev environment. It is not published
-> to the Google Workspace Marketplace.
+> spreadsheet and is not published to the Google Workspace Marketplace.
+> Production is the default environment, but its Auth0 application does not
+> exist yet; see [Environments](#environments).
 
 ## Functions
 
@@ -116,11 +117,32 @@ clasp push     # upload src/ to the Apps Script project in .clasp.json
 copy, run `clasp create-script --type sheets --rootDir src` and restore
 `src/appsscript.json` afterwards, because `clasp` overwrites it.
 
+### Environments
+
+`src/Config.js` defines the environments. **Production is the default.**
+
+| Environment | Auth domain | API |
+|---|---|---|
+| `prod` (default) | `auth.glassnode.com` | `api.glassnode.com` |
+| `dev` | `auth.glassnode.tech` | `api.glassnode.tech` |
+
+To point a deployment at dev, set the script property `GN_ENV` to `dev` in the
+Apps Script editor under *Project Settings → Script Properties*. The property
+belongs to the script project: it applies to everyone using that deployment
+and cannot be changed from a spreadsheet. An unknown value is an error.
+
+The sidebar shows "Environment: dev" whenever the deployment is not on
+production. A session is tied to the environment that issued it, so switching
+environments signs the spreadsheet out.
+
+Each environment needs its own Auth0 application. See
+[docs/auth0-setup.md](docs/auth0-setup.md).
+
 ### Layout
 
 | File | Purpose |
 |---|---|
-| `src/Config.js` | Auth0 tenant, client ID and API host. The only place that names an environment. |
+| `src/Config.js` | Environments: Auth0 tenant, client ID and API host for each. |
 | `src/Auth.js` | Device flow, session storage, token refresh, sidebar API. |
 | `src/Api.js` | API client: cache, request merging, rate-limit handling. |
 | `src/Functions.js` | `GN_ASSETS` and `GN_METRIC`. |

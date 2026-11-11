@@ -63,8 +63,8 @@ function gnApiGet_(path, params, ttlSeconds) {
   Object.keys(params || {}).forEach(function (k) {
     query[k] = params[k];
   });
-  query.source = GN_CONFIG_.source;
-  var url = GN_CONFIG_.apiBase + path + '?' + gnQueryString_(query);
+  query.source = gnConfig_().source;
+  var url = gnConfig_().apiBase + path + '?' + gnQueryString_(query);
 
   // Resolve the token first so that signed-out sheets never serve cached data.
   var token = gnGetAccessToken_();
