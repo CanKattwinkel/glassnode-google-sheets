@@ -29,9 +29,11 @@ can edit the Apps Script project.
 clasp push     # upload src/ to the Apps Script project in .clasp.json
 ```
 
-`.clasp.json` points at the dev spreadsheet's bound script. To work on your own copy, run
-`clasp create-script --type sheets --rootDir src` and restore `src/appsscript.json`
-afterwards, because `clasp` overwrites it.
+`.clasp.json` names the Apps Script project to push to. It isn't committed: copy
+`.clasp.json.example` to `.clasp.json` and fill in the project's script ID and its
+spreadsheet's ID (ask a code owner for the shared development project). To work on your own
+copy instead, run `clasp create-script --type sheets --rootDir src`, which writes
+`.clasp.json`, and restore `src/appsscript.json` afterwards, because `clasp` overwrites it.
 
 ## Commit messages
 
